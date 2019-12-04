@@ -1,8 +1,25 @@
 #include <iostream>
 
-#include "tasklib.h"
-#include "thread_safe_log.h"
-#include "util.h"
+#include "../tasklib/tasklib.h"
+#include "../tasklib/thread_safe_log.h"
+#include "../tasklib/util.h"
+
+// Machinery for including the correct library
+// Usage: #pragma comment (lib, LIB(some_lib))
+#define LIB(name) ".." "//" ARCH_FOLDER "//" BUILD_FOLDER "//" #name ".lib"
+#if defined _WIN64
+#define ARCH_FOLDER "x64"
+#else
+#define ARCH_FOLDER // "x86"
+#endif
+#if (defined _DEBUG || defined _NDEBUG)
+#define BUILD_FOLDER "Debug"
+#else
+#define BUILD_FOLDER "Release"
+#endif
+
+// Link to tasklib to test
+#pragma comment (lib, LIB(tasklib))
 
 using namespace std;
 using namespace chrono;
@@ -15,24 +32,6 @@ void busySleep(const duration<T...>& d) {
 
 void theTask() {
 	busySleep(microseconds(10));
-}
-
-Workflow makeFrameWorkflow() {
-	return WorkflowBuilder("Frame")
-		.task("Input", theTask)
-		.task("Network", theTask)
-		.task("Camera", theTask, { "Input", "Network" })
-		.task("Transforms", theTask, { "Input", "Network" })
-		.task("Sky", theTask, { "Camera" })
-		.task("Terrain", theTask, { "Camera" })
-		.task("Solids", theTask, { "Camera" })
-		.task("Particles", theTask, { "Camera" })
-		.task("Dynamics", theTask, { "Camera", "Transforms" })
-		.task("Character", theTask, { "Camera", "Transforms" })
-		.task("Post", theTask, { "Sky", "Terrain", "Solids", "Particles", "Dynamics", "Character" })
-		.task("Gui", theTask, { "Post" })
-		.task("ResolveCommandLists", theTask, { "Gui" })
-		.build();
 }
 
 // generates a random DAG
@@ -61,7 +60,7 @@ Workflow makeRandomWorkflow(int numTasks) {
 }
 
 void test(const Workflow& wf, int threads) {
-	LOG("Started submission");
+	LOG("Starting submission");
 	auto engine = ConcurrentTaskEngine(threads);
 	engine.runWorkflow(wf);
 	LOG("Completed submission");
