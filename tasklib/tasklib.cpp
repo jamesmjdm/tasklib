@@ -190,14 +190,10 @@ void ConcurrentTaskEngine::runWorkflow(const Workflow& w) {
 	// entire method atomic
 	// MUST BLOCK until tasks complete...
 	auto l = scoped_lock(runWorkflowMtx);
-	
-	// TODO: super dodgy; we're doing this so that emplace_back doesn't invalidate pointers
-	backlog.clear();
-	backlog.reserve(w.getSubtasks().size());
 
-	// copy workflow tasks to our own backing store, fix dependencies as pointers
+	// copy workflow tasks to temporary backing store, fix dependencies as pointers
+	auto backlog = vector<Task>(w.getSubtasks().size());
 	for (auto& t : w.getSubtasks()) {
-		//Task(const string & _name, const TaskFunction & _func, vector<Task*> && _dependencies);
 		auto deps = vector<Task*>();
 		for (auto d : t.dependencies) {
 			// dependencies must already be in the backlog due to sorting, so this is safe
@@ -206,11 +202,15 @@ void ConcurrentTaskEngine::runWorkflow(const Workflow& w) {
 		backlog.emplace_back(t.name, t.func, move(deps));
 	}
 
+	// push tasks to work queue
 	for (auto& t : backlog) {
 		taskQueue.produce(&t);
 	}
-	// TODO: need to find a way of blocking here
-	// don't want to allow to call runWorkflow() before all tasks from this workflow complete
-	// because backlog.clear() will dangle lots of pointers
-	// maybe run an in-thread worker?
+	
+	// worker threads have now started processing tasks
+	// block the current thread until all tasks complete
+	// TODO: this is inefficient
+	for (auto& t : backlog) {
+		t.waitUntilComplete();
+	}
 }

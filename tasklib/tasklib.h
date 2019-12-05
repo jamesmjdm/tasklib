@@ -74,6 +74,7 @@ public:
 };
 
 class ConcurrentTaskEngine : public TaskEngine {
+protected:
 	struct Task {
 		// const obviates locking (i think...)
 		const std::string name;
@@ -97,19 +98,14 @@ class ConcurrentTaskEngine : public TaskEngine {
 	};
 
 	std::vector<std::thread> workers;
-	
-	// TODO: pull from taskQueue onto ready queue when dependencies are complete;
-	//		workers pull from ready queue rather than task queue
-	//concurrent_queue<Task> readyQueue;
 	concurrent_queue<Task*> taskQueue;
-	std::vector<Task> backlog;
-	mutable std::mutex runWorkflowMtx;
 
+	mutable std::mutex runWorkflowMtx;
 public:
 	ConcurrentTaskEngine(int numWorkers);
 	ConcurrentTaskEngine(const ConcurrentTaskEngine&) = delete;
 	ConcurrentTaskEngine(ConcurrentTaskEngine&&) = delete;
-	~ConcurrentTaskEngine();
+	virtual ~ConcurrentTaskEngine();
 	ConcurrentTaskEngine& operator=(const ConcurrentTaskEngine&) = delete;
 	ConcurrentTaskEngine& operator=(ConcurrentTaskEngine&&) = delete;
 
