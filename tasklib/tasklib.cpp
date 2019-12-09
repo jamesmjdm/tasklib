@@ -192,7 +192,8 @@ void ConcurrentTaskEngine::runWorkflow(const Workflow& w) {
 	auto l = scoped_lock(runWorkflowMtx);
 
 	// copy workflow tasks to temporary backing store, fix dependencies as pointers
-	auto backlog = vector<Task>(w.getSubtasks().size());
+	auto backlog = vector<Task>();
+	backlog.reserve(w.getSubtasks().size());
 	for (auto& t : w.getSubtasks()) {
 		auto deps = vector<Task*>();
 		for (auto d : t.dependencies) {
