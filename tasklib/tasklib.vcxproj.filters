@@ -25,9 +25,6 @@
     <ClInclude Include="concurrent_queue.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="thread_safe_log.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="util.h">
       <Filter>Header Files</Filter>
     </ClInclude>

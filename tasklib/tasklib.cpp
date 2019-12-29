@@ -1,15 +1,49 @@
+#include <sstream>
+
 #include "tasklib.h"
-#include "thread_safe_log.h"
 #include "util.h"
 
 using namespace std;
 using namespace chrono;
 
+#define TASKLIB_VERBOSE 0
+
+#ifndef TASKLIB_VERBOSE
+#define TASKLIB_VERBOSE 0
+#endif
+#if TASKLIB_VERBOSE
+template<typename First>
+void log_entry(std::ostream& o, First first) {
+	o << first;
+}
+
+template<typename First, typename... Args>
+void log_entry(std::ostream& o, First first, Args... args) {
+	o << first;
+	log_entry(o, args...);
+}
+
+template<typename ... Args>
+void log(Args... args) {
+	static auto m = std::mutex(); // shared by all threads
+
+	// buffer up the log entry
+	auto s = std::stringstream();
+	log_entry(s, args...);
+
+	// push log entry out
+	auto lock = std::scoped_lock(m);
+	std::cout << s.str() << std::endl;
+}
+#else
+#define log(...)
+#endif
+
 WorkflowBuilder::WorkflowBuilder(const string& _name): workflowName(_name) {}
 
 WorkflowBuilder& WorkflowBuilder::task(const string& name, const TaskFunction& func) {
 	if (tasks.find(name) != tasks.end()) {
-		throw runtime_error("Task by the name " + name + " already exists");
+		throw runtime_error("Task <" + name + "> already exists");
 	}
 	auto& task = tasks[name]; // map::[] creates a new one if not existing
 	task.name = name;
@@ -19,7 +53,6 @@ WorkflowBuilder& WorkflowBuilder::task(const string& name, const TaskFunction& f
 }
 WorkflowBuilder& WorkflowBuilder::task(const string& name, const TaskFunction& func, const vector<string>& depends) {
 	task(name, func);
-	// TODO: go through dependencies
 	tasks[name].dependencies = depends;
 	return *this;
 }
@@ -55,7 +88,10 @@ Workflow WorkflowBuilder::build() {
 		}
 		else {
 			dependencies[pt].reserve(numDependencies);
-			for_each(pt->dependencies.begin(), pt->dependencies.end(), [&,this](auto& dep) {
+			for_each(pt->dependencies.begin(), pt->dependencies.end(), [&, this](auto& dep) {
+				if (tasks.find(dep) == tasks.end()) {
+					throw runtime_error("Dependency <" + dep + "> for task <" + pt->name + "> not found");
+				}
 				auto pd = &tasks[dep];
 				dependencies[pt].push_back(pd);
 				reverseDeps[pd].push_back(pt);
@@ -86,6 +122,7 @@ Workflow WorkflowBuilder::build() {
 	for (const auto& [t, v] : dependencies) {
 		if (v.size()) {
 			cycles << t->name << '\n';
+			foundCycles = true;
 		}
 	}
 	if (foundCycles) {
@@ -138,6 +175,7 @@ void ConcurrentTaskEngine::Task::waitUntilComplete() {
 }
 void ConcurrentTaskEngine::Task::run() {
 	func();
+	auto l = scoped_lock(completeMtx);
 	complete = true;
 	completeVar.notify_all();
 }
@@ -148,23 +186,23 @@ ConcurrentTaskEngine::ConcurrentTaskEngine(int numWorkers) {
 		while (true) {
 			auto task = taskQueue.consume();
 			if (task) {
-				LOG("Worker: ", workerId, " received task: ", task->name);
+				log("Worker: ", workerId, " received task: ", task->name);
 				for (auto d : task->dependencies) {
-					LOG("Worker: ", workerId, " waiting for dependency ", d->name);
+					log("Worker: ", workerId, " waiting for dependency ", d->name);
 					d->waitUntilComplete();
 				}
-				LOG("Worker: ", workerId, " running task: ", task->name);
+				log("Worker: ", workerId, " running task: ", task->name);
 				task->run();
 			} else {
 				// when the engine is destroyed, "nullptr" task is sent to all engines
 				// workers should exit gracefully when they see this
-				LOG("Worker: ", workerId, " received kill-task; exiting...");
+				log("Worker: ", workerId, " received kill-task; exiting...");
 				break;
 			}
 		}
 	};
 
-	LOG("Spawning ", numWorkers, " workers");
+	log("Spawning ", numWorkers, " workers");
 	for (int i = 0; i < numWorkers; i++) {
 		workers.push_back(thread(workerMain, i));
 	}
@@ -172,18 +210,18 @@ ConcurrentTaskEngine::ConcurrentTaskEngine(int numWorkers) {
 
 ConcurrentTaskEngine::~ConcurrentTaskEngine() {
 	// send "kill" messages - bit of a hack...
-	LOG("Sending 'kill' message to workers...");
+	log("Sending 'kill' message to workers...");
 	for (auto& w : workers) {
 		taskQueue.produce(nullptr);
 	}
 	
 	// join all workers
-	LOG("Waiting for workers to join...");
+	log("Waiting for workers to join...");
 	for (auto& w : workers) {
 		w.join();
 	}
 
-	LOG("All workers terminated");
+	log("All workers terminated");
 }
 
 void ConcurrentTaskEngine::runWorkflow(const Workflow& w) {

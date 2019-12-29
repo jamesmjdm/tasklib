@@ -1,12 +1,12 @@
 #include <iostream>
+#include <sstream>
 
 #include "../tasklib/tasklib.h"
-#include "../tasklib/thread_safe_log.h"
 #include "../tasklib/util.h"
 
 // Machinery for including the correct library
 // Usage: #pragma comment (lib, LIB(some_lib))
-#define LIB(name) ".." "//" ARCH_FOLDER "//" BUILD_FOLDER "//" #name ".lib"
+#define LIB(name) "..//" ARCH_FOLDER "//" BUILD_FOLDER "//" #name ".lib"
 #if defined _WIN64
 #define ARCH_FOLDER "x64"
 #else
@@ -31,7 +31,7 @@ void busySleep(const duration<T...>& d) {
 }
 
 void theTask() {
-	busySleep(microseconds(10));
+	busySleep(microseconds(1));
 }
 
 // generates a random DAG
@@ -56,14 +56,8 @@ Workflow makeRandomWorkflow(int numTasks) {
 	for (int i = 0; i < numTasks; i++) {
 		builder.task(names[i], theTask, randomDeps(i - 1));
 	}
-	return builder.build();
-}
 
-void test(const Workflow& wf, int threads) {
-	LOG("Starting submission");
-	auto engine = ConcurrentTaskEngine(threads);
-	engine.runWorkflow(wf);
-	LOG("Completed submission");
+	return builder.build();
 }
 
 int main(int argc, char* argv[]) {
@@ -71,13 +65,40 @@ int main(int argc, char* argv[]) {
 	auto numThreads = (argc > 2) ? parseDouble(argv[2]).value_or(4) : 4;
 
 	auto wf = makeRandomWorkflow(numTasks);
+	auto engine = ConcurrentTaskEngine(8);
 
-	auto start = steady_clock::now();
-	test(wf, numThreads);
-	auto end = steady_clock::now();
+	auto testCount = 1000;
+	auto totalTime = 0.0;
+	auto totalSquareTime = 0.0;
+	auto minTime = numeric_limits<double>::max();
+	auto maxTime = 0.0;
 
-	cout << "Time taken: " << duration_cast<microseconds>(end - start).count() / 1000.0 << "ms" << endl;
-	cout << "Threads: " << numThreads << endl;
-	cout << "Tasks:   " << numTasks << endl;
+	for (int i = 0; i < testCount; i++) {
+		auto start = steady_clock::now();
+		cout << "Starting test" << endl;
+		engine.runWorkflow(wf);
+		cout << "Ending test" << endl;
+		auto end = steady_clock::now();
+
+		auto time = duration_cast<microseconds>(end - start).count() / 1000.0;
+		minTime = min(minTime, time);
+		maxTime = max(maxTime, time);
+		totalTime += time;
+		totalSquareTime += time * time;
+		cout << "Time taken: " << time << "ms" << endl;
+		cout << "Threads: " << numThreads << endl;
+		cout << "Tasks:   " << numTasks << endl;
+	}
+
+	auto mean = totalTime / testCount;
+	auto variance = totalSquareTime / testCount - mean * mean;
+
+	cout << "All tests complete" << endl;
+	cout << " - Mean time: " << mean << endl;
+	cout << " - Min/Max:   " << minTime << ", " << maxTime << endl;
+	cout << " - std. dev.: " << sqrt(variance) << endl;
+
+	getchar();
+
 	return 0;
 }

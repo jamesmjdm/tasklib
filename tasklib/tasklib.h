@@ -101,6 +101,7 @@ protected:
 	concurrent_queue<Task*> taskQueue;
 
 	mutable std::mutex runWorkflowMtx;
+
 public:
 	ConcurrentTaskEngine(int numWorkers);
 	ConcurrentTaskEngine(const ConcurrentTaskEngine&) = delete;
@@ -110,9 +111,10 @@ public:
 	ConcurrentTaskEngine& operator=(ConcurrentTaskEngine&&) = delete;
 
 	// run a workflow
-	// this method is (disappointingly) atomic and blocks until the workflow completes
+	// this method is atomic and blocks calling thread until the workflow completes
 	// implying that a new workflow won't start until the current one is complete
 	// -- marked virtual so that a subclass can improve on this behaviour
+	// -- a subclass that runs tasks on the current thread while waiting is a good start
 	virtual void runWorkflow(const Workflow& wf) override;
 };
 
