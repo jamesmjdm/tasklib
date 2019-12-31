@@ -3,6 +3,9 @@
 
 #include <optional>
 #include <string>
+#include <condition_variable>
+#include <mutex>
+#include <atomic>
 
 // erase-remove idiom for removing from a container type in-place
 // shorter to type and easier to remember
@@ -13,5 +16,22 @@ void eraseRemove(Container& container, const Type& ty) {
 }
 
 std::optional<double> parseDouble(const std::string& str);
+
+struct semaphore {
+	semaphore() = default;
+	semaphore(const semaphore&) = delete;
+	semaphore& operator=(const semaphore&) = delete;
+	semaphore(semaphore&&) = delete;
+	semaphore& operator=(semaphore&&) = delete;
+
+	void up(int n = 1);
+	void down(int n = 1);
+	void wait_for_zero();
+
+private:
+	int value;
+	mutable std::mutex mtx;
+	std::condition_variable cvar;
+};
 
 #endif

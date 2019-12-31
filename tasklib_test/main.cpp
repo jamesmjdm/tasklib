@@ -31,7 +31,7 @@ void busySleep(const duration<T...>& d) {
 }
 
 void theTask() {
-	busySleep(microseconds(1));
+	busySleep(microseconds(100));
 }
 
 // generates a random DAG
@@ -60,23 +60,23 @@ Workflow makeRandomWorkflow(int numTasks) {
 	return builder.build();
 }
 
-int main(int argc, char* argv[]) {
+void largeTest(int argc, char* argv[]) {
 	auto numTasks = (argc > 1) ? parseDouble(argv[1]).value_or(100) : 100;
 	auto numThreads = (argc > 2) ? parseDouble(argv[2]).value_or(4) : 4;
+	auto numTests = 10;
 
 	auto wf = makeRandomWorkflow(numTasks);
-	auto engine = ConcurrentTaskEngine(8);
+	auto engine = ConcurrentTaskEngine(numThreads);
 
-	auto testCount = 1000;
 	auto totalTime = 0.0;
 	auto totalSquareTime = 0.0;
 	auto minTime = numeric_limits<double>::max();
 	auto maxTime = 0.0;
 
-	for (int i = 0; i < testCount; i++) {
+	for (int i = 0; i < numTests; i++) {
 		auto start = steady_clock::now();
 		cout << "Starting test" << endl;
-		engine.runWorkflow(wf);
+		engine.runWorkflow(wf, true);
 		cout << "Ending test" << endl;
 		auto end = steady_clock::now();
 
@@ -90,14 +90,35 @@ int main(int argc, char* argv[]) {
 		cout << "Tasks:   " << numTasks << endl;
 	}
 
-	auto mean = totalTime / testCount;
-	auto variance = totalSquareTime / testCount - mean * mean;
+	auto mean = totalTime / numTests;
+	auto variance = totalSquareTime / numTests - mean * mean;
 
 	cout << "All tests complete" << endl;
 	cout << " - Mean time: " << mean << endl;
 	cout << " - Min/Max:   " << minTime << ", " << maxTime << endl;
 	cout << " - std. dev.: " << sqrt(variance) << endl;
+}
 
+void simultaneousRunTest() {
+	auto engine = ConcurrentTaskEngine(4);
+	auto wf = makeRandomWorkflow(100);
+
+	for (int i = 0; i < 5; i++) {
+		cout << "Sim 1: " << endl;
+		engine.runWorkflow(wf, false);
+		cout << " - submit complete" << endl;
+		busySleep(milliseconds(20));
+	}
+}
+
+int main(int argc, char* argv[]) {
+
+	// run lots of workflows in sequence
+	largeTest(argc, argv);
+	getchar();
+	
+	// test submitting workflows from different threads
+	simultaneousRunTest();
 	getchar();
 
 	return 0;

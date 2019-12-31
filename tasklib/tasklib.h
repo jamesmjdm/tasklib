@@ -11,6 +11,7 @@
 #include <unordered_map>
 
 #include "concurrent_queue.h"
+#include "util.h"
 
 using TaskFunction = std::function<void()>;
 using uint = unsigned int;
@@ -70,13 +71,13 @@ public:
 class TaskEngine {
 public:
 	virtual ~TaskEngine() {}
-	virtual void runWorkflow(const Workflow& wf) = 0;
+	virtual void runWorkflow(const Workflow& wf, unsigned int flags=0) = 0;
 };
 
 class ConcurrentTaskEngine : public TaskEngine {
 protected:
 	struct Task {
-		// const obviates locking (i think...)
+		// const obviates locking?
 		const std::string name;
 		const TaskFunction func;
 		const std::vector<Task*> dependencies; // points to members of the backlog
@@ -97,11 +98,22 @@ protected:
 		void run();
 	};
 
+	// worker threads
 	std::vector<std::thread> workers;
+	// the actual shared queue; points to members of backlog
 	concurrent_queue<Task*> taskQueue;
 
-	mutable std::mutex runWorkflowMtx;
+	// make sure that workflows are queued atomically
+	mutable std::mutex backlogMtx;
+	std::vector<Task> backlog;
+	semaphore backlogCount;
 
+	// called by each worker when they complete a task
+	// if that was the last task in the backlog, will notify all threads
+	// that are blocked on waitBacklog
+	void workerCompletedTask();
+	// wait for current workflow to complete
+	void waitBacklog();
 public:
 	ConcurrentTaskEngine(int numWorkers);
 	ConcurrentTaskEngine(const ConcurrentTaskEngine&) = delete;
@@ -111,11 +123,9 @@ public:
 	ConcurrentTaskEngine& operator=(ConcurrentTaskEngine&&) = delete;
 
 	// run a workflow
-	// this method is atomic and blocks calling thread until the workflow completes
-	// implying that a new workflow won't start until the current one is complete
-	// -- marked virtual so that a subclass can improve on this behaviour
-	// -- a subclass that runs tasks on the current thread while waiting is a good start
-	virtual void runWorkflow(const Workflow& wf) override;
+	// will block current thread until complete
+	// flags doesn't do anything yet
+	virtual void runWorkflow(const Workflow& wf, unsigned int flags) override;
 };
 
 #endif

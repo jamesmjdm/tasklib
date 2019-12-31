@@ -193,6 +193,8 @@ ConcurrentTaskEngine::ConcurrentTaskEngine(int numWorkers) {
 				}
 				log("Worker: ", workerId, " running task: ", task->name);
 				task->run();
+				log("Worker: ", workerId, " completed task: ", task->name);
+				workerCompletedTask();
 			} else {
 				// when the engine is destroyed, "nullptr" task is sent to all engines
 				// workers should exit gracefully when they see this
@@ -224,32 +226,41 @@ ConcurrentTaskEngine::~ConcurrentTaskEngine() {
 	log("All workers terminated");
 }
 
-void ConcurrentTaskEngine::runWorkflow(const Workflow& w) {
-	// entire method atomic
-	// MUST BLOCK until tasks complete...
-	auto l = scoped_lock(runWorkflowMtx);
 
-	// copy workflow tasks to temporary backing store, fix dependencies as pointers
-	auto backlog = vector<Task>();
-	backlog.reserve(w.getSubtasks().size());
-	for (auto& t : w.getSubtasks()) {
+void ConcurrentTaskEngine::runWorkflow(const Workflow& w, unsigned int flags) {
+	auto l = scoped_lock(backlogMtx);
+	const auto& subtasks = w.getSubtasks();
+
+	// copy workflow tasks to backing store, fix dependencies as pointers
+	backlog.clear();
+	backlog.reserve(subtasks.size()); // MUST NOT dynamically resize while pushing!
+	for (auto& t : subtasks) {
 		auto deps = vector<Task*>();
 		for (auto d : t.dependencies) {
-			// dependencies must already be in the backlog due to sorting, so this is safe
+			// dependencies will already be pushed due to sorting, so this is safe
 			deps.push_back(&backlog[d]);
 		}
 		backlog.emplace_back(t.name, t.func, move(deps));
 	}
 
+	// set outstanding workflow count
+	backlogCount.up(subtasks.size());
+
 	// push tasks to work queue
 	for (auto& t : backlog) {
 		taskQueue.produce(&t);
 	}
-	
-	// worker threads have now started processing tasks
-	// block the current thread until all tasks complete
-	// TODO: this is inefficient
-	for (auto& t : backlog) {
-		t.waitUntilComplete();
-	}
+
+	// TODO: do tasks on calling thread?
+	// TODO: a non-blocking version
+
+	waitBacklog();
+}
+
+void ConcurrentTaskEngine::workerCompletedTask() {
+	backlogCount.down(1);
+}
+
+void ConcurrentTaskEngine::waitBacklog() {
+	backlogCount.wait_for_zero();
 }
