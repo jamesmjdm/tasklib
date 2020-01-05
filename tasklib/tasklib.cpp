@@ -56,6 +56,15 @@ WorkflowBuilder& WorkflowBuilder::task(const string& name, const TaskFunction& f
 	tasks[name].dependencies = depends;
 	return *this;
 }
+WorkflowBuilder& WorkflowBuilder::taskFinal(const string& name, const TaskFunction& func) {
+	auto depends = vector<string>();
+	for (const auto& d : tasks) {
+		depends.push_back(d.first);
+	}
+	task(name, func);
+	tasks[name].dependencies = move(depends);
+	return *this;
+}
 Workflow WorkflowBuilder::build() {
 	auto wf = vector<Workflow::Task>(); // tasks topologically sorted
 	
@@ -254,13 +263,21 @@ void ConcurrentTaskEngine::runWorkflow(const Workflow& w, unsigned int flags) {
 	// TODO: do tasks on calling thread?
 	// TODO: a non-blocking version
 
-	waitBacklog();
+	if (flags & TaskEngine::DO_NOT_BLOCK) {
+
+	} else {
+		waitForBacklog();
+	}
 }
 
 void ConcurrentTaskEngine::workerCompletedTask() {
 	backlogCount.down(1);
 }
 
-void ConcurrentTaskEngine::waitBacklog() {
+void ConcurrentTaskEngine::waitForBacklog() {
 	backlogCount.wait_for_zero();
+}
+
+bool ConcurrentTaskEngine::isBacklogComplete() {
+	return backlogCount.is_zero();
 }

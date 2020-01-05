@@ -34,3 +34,6 @@ void semaphore::wait_for_zero() {
 		}
 	}
 }
+bool semaphore::is_zero() {
+	return value == 0;
+}

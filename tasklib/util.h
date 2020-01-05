@@ -27,9 +27,10 @@ struct semaphore {
 	void up(int n = 1);
 	void down(int n = 1);
 	void wait_for_zero();
+	bool is_zero();
 
 private:
-	int value;
+	std::atomic<int> value;
 	mutable std::mutex mtx;
 	std::condition_variable cvar;
 };

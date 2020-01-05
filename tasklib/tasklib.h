@@ -63,13 +63,20 @@ public:
 	WorkflowBuilder& operator=(WorkflowBuilder&&) = default;
 	~WorkflowBuilder() = default;
 
+	// a task with no dependencies
 	WorkflowBuilder& task(const std::string& name, const TaskFunction& func);
+	// a task with some dependencies
 	WorkflowBuilder& task(const std::string& name, const TaskFunction& func, const std::vector<std::string>& depends);
+	// a task that depends on all tasks (that have been defined SO FAR)
+	WorkflowBuilder& taskFinal(const std::string& name, const TaskFunction& func);
 	Workflow build();
 };
 
 class TaskEngine {
 public:
+	enum {
+		DO_NOT_BLOCK = 1
+	} Flag;
 	virtual ~TaskEngine() {}
 	virtual void runWorkflow(const Workflow& wf, unsigned int flags=0) = 0;
 };
@@ -112,8 +119,7 @@ protected:
 	// if that was the last task in the backlog, will notify all threads
 	// that are blocked on waitBacklog
 	void workerCompletedTask();
-	// wait for current workflow to complete
-	void waitBacklog();
+
 public:
 	ConcurrentTaskEngine(int numWorkers);
 	ConcurrentTaskEngine(const ConcurrentTaskEngine&) = delete;
@@ -126,6 +132,10 @@ public:
 	// will block current thread until complete
 	// flags doesn't do anything yet
 	virtual void runWorkflow(const Workflow& wf, unsigned int flags) override;
+	// block until current workflow to complete
+	void waitForBacklog();
+	// check if backlog is complete
+	bool isBacklogComplete();
 };
 
 #endif

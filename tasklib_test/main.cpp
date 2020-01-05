@@ -105,17 +105,20 @@ void simultaneousRunTest() {
 
 	for (int i = 0; i < 5; i++) {
 		cout << "Sim 1: " << endl;
-		engine.runWorkflow(wf, false);
+		engine.runWorkflow(wf, TaskEngine::DO_NOT_BLOCK);
 		cout << " - submit complete" << endl;
-		busySleep(milliseconds(20));
+		while (!engine.isBacklogComplete()) {
+			cout << "waiting..." << endl;
+			busySleep(microseconds(10));
+		}
 	}
 }
 
 int main(int argc, char* argv[]) {
 
 	// run lots of workflows in sequence
-	largeTest(argc, argv);
-	getchar();
+	//largeTest(argc, argv);
+	//getchar();
 	
 	// test submitting workflows from different threads
 	simultaneousRunTest();
